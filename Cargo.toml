@@ -1,0 +1,43 @@
+# Its own workspace root, so this repository builds on its own.
+[workspace]
+
+[package]
+name = "xmip-core-contract-schematron"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/IlleNilsson/xmip-core-contract-schematron"
+description = "Schematron content contract: well-formed XML always, holding to a bound set of ISO Schematron rules when a Location names one. A xmip-core-contract technology."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# A Technology depends on its parent Capability, never the reverse
+# (repository-model.md). The Contract trait and its value types live there.
+contract = { package = "xmip-core-contract", git = "https://github.com/IlleNilsson/xmip-core-contract", branch = "main" }
+stream = { package = "xmip-core-stream", git = "https://github.com/IlleNilsson/xmip-core-stream", branch = "main" }
+
+# The schema document is read with the same parser the xml-schema technology
+# uses; the instance is read into the DOM the XPath engine evaluates over.
+roxmltree = "0.21"
+sxd-document = "0.3"
+# XPath 1.0. Schematron is XPath with a rule structure around it; the engine is
+# the whole point, and this one is pure Rust and complete for the 1.0 axes,
+# predicates and function library.
+sxd-xpath = "0.4"
+
+[dev-dependencies]
+xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+too_many_lines = "warn"
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+unwrap_used = "warn"
+expect_used = "allow"
