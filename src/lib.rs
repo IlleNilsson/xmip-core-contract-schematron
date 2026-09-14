@@ -110,22 +110,12 @@ impl Contract for Schematron {
             Some(rules) => rules.check(&package.as_document())?,
             None => Vec::new(),
         };
-        Ok(ValidationResult {
-            valid: issues.is_empty(),
-            issues,
-        })
+        Ok(ValidationResult::of(issues))
     }
 }
 
 fn malformed(message: &str) -> ValidationResult {
-    ValidationResult {
-        valid: false,
-        issues: vec![ValidationIssue {
-            code: "malformed".to_string(),
-            message: message.to_string(),
-            path: None,
-        }],
-    }
+    ValidationResult::of(vec![ValidationIssue::malformed(message)])
 }
 
 /// Loads the contract a Location names: an empty reference is the bare
@@ -151,11 +141,7 @@ impl ContractFactory for SchematronFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xcore::StreamId;
-
-    fn stream(text: &str) -> Stream {
-        Stream::new(StreamId::new(1), text.as_bytes().to_vec(), None)
-    }
+    use contract::fixture::stream;
 
     const INVOICE: &str = r#"<sch:schema xmlns:sch="http://purl.oclc.org/dsdl/schematron">
   <sch:title>Invoice rules</sch:title>
