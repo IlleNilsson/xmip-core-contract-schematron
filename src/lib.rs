@@ -15,11 +15,11 @@
 
 pub mod rules;
 
-use contract::{
+use rules::Rules;
+use sdk::contract::{
     Contract, ContractDescriptor, ContractError, ContractFactory, ContractId, ValidationIssue,
     ValidationResult,
 };
-use rules::Rules;
 use stream::Stream;
 
 /// The Schematron contract, bare or bound to rules.

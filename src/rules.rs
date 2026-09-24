@@ -17,7 +17,7 @@
 //! `report`; its `message` is the assertion's own text; its `path` is where the
 //! rule fired, `XPath`-style.
 
-use contract::{ContractError, ValidationIssue};
+use sdk::contract::{ContractError, ValidationIssue};
 use sxd_document::dom::{Document, Element};
 use sxd_xpath::nodeset::Node;
 use sxd_xpath::{Context, Factory, Value, XPath};
