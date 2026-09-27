@@ -99,7 +99,7 @@ impl Contract for Schematron {
     }
 
     fn validate(&self, stream: &Stream) -> Result<ValidationResult, ContractError> {
-        let text = match std::str::from_utf8(stream.bytes()) {
+        let text = match stream.text() {
             Ok(text) => text,
             Err(error) => return Ok(malformed(&format!("not UTF-8 text: {error}"))),
         };
@@ -209,7 +209,7 @@ mod tests {
         let seen: Vec<(&str, &str, Option<&str>)> = held
             .issues
             .iter()
-            .map(|i| (i.code.as_str(), i.message.as_str(), i.path.as_deref()))
+            .map(|i| (i.code.as_ref(), i.message.as_str(), i.path.as_deref()))
             .collect();
         assert!(
             seen.contains(&(

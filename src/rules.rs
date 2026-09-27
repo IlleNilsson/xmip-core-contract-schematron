@@ -18,6 +18,11 @@
 //! rule fired, `XPath`-style.
 
 use contract::{ContractError, ValidationIssue};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Weak};
 use sxd_document::dom::{Document, Element};
 use sxd_xpath::nodeset::Node;
 use sxd_xpath::{Context, Factory, Value, XPath};
@@ -30,15 +35,21 @@ pub struct Rules {
     title: Option<String>,
     namespaces: Vec<(String, String)>,
     patterns: Vec<Pattern>,
+    /// Which compiled form in a thread's `COMPILED` is this one's.
+    key: u64,
+    /// Alive exactly as long as these rules; a thread's compiled form of
+    /// rules that are gone is dropped the next time that thread compiles.
+    alive: Arc<()>,
 }
 
 struct Pattern {
     rules: Vec<Rule>,
 }
 
-/// `XPath` expressions are kept as text and compiled per check: a compiled
-/// one is not `Send`, and a Contract is. They are compiled once at bind time
-/// all the same, so a bad one refuses the document there.
+/// `XPath` expressions are kept as text here because a compiled one is not
+/// `Send`, and a Contract is. They are compiled at bind time, so a bad one
+/// refuses the document there, and once more per thread on its first check;
+/// every later check on that thread reuses them.
 struct Rule {
     context: String,
     assertions: Vec<Assertion>,
@@ -51,6 +62,28 @@ struct Assertion {
     test: String,
     id: Option<String>,
     message: String,
+}
+
+/// The rules compiled on one thread: the evaluation context with the
+/// namespaces set, and per pattern, per rule, the selector and the tests.
+struct Compiled {
+    context: Context<'static>,
+    patterns: Vec<Vec<(XPath, Vec<XPath>)>>,
+}
+
+/// A compiled form, and whether the rules it was compiled from still exist.
+type Entry = (Weak<()>, Rc<Compiled>);
+
+thread_local! {
+    static COMPILED: RefCell<HashMap<u64, Entry>> = RefCell::new(HashMap::new());
+}
+
+static NEXT_KEY: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread has compiled rules for checking.
+    static COMPILATIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// A rule's `context` is a match pattern, judged against every node in the
@@ -92,6 +125,8 @@ impl Rules {
             title: None,
             namespaces: Vec::new(),
             patterns: Vec::new(),
+            key: NEXT_KEY.fetch_add(1, Ordering::Relaxed),
+            alive: Arc::new(()),
         };
         for node in root.children().filter(roxmltree::Node::is_element) {
             match node.tag_name().name() {
@@ -119,57 +154,100 @@ impl Rules {
         self.title.as_deref()
     }
 
+    /// These rules compiled for the calling thread: the first check on a
+    /// thread compiles them, every later one reuses them.
+    fn compiled(&self) -> Result<Rc<Compiled>, ContractError> {
+        let found = COMPILED.with_borrow(|all| all.get(&self.key).map(|(_, c)| Rc::clone(c)));
+        if let Some(found) = found {
+            return Ok(found);
+        }
+        let factory = Factory::new();
+        let mut context = Context::new();
+        for (prefix, uri) in &self.namespaces {
+            context.set_namespace(prefix, uri);
+        }
+        let mut patterns = Vec::with_capacity(self.patterns.len());
+        for pattern in &self.patterns {
+            let mut rules = Vec::with_capacity(pattern.rules.len());
+            for rule in &pattern.rules {
+                let tests = rule
+                    .assertions
+                    .iter()
+                    .map(|assertion| build(&factory, &assertion.test))
+                    .collect::<Result<_, _>>()?;
+                rules.push((build(&factory, &selector(&rule.context))?, tests));
+            }
+            patterns.push(rules);
+        }
+        #[cfg(test)]
+        COMPILATIONS.set(COMPILATIONS.get() + 1);
+        let compiled = Rc::new(Compiled { context, patterns });
+        COMPILED.with_borrow_mut(|all| {
+            all.retain(|_, (alive, _)| alive.strong_count() > 0);
+            all.insert(
+                self.key,
+                (Arc::downgrade(&self.alive), Rc::clone(&compiled)),
+            );
+        });
+        Ok(compiled)
+    }
+
     /// Every assertion that fires over `document`.
     ///
     /// # Errors
     /// An `XPath` that compiled but cannot be evaluated over this document.
     pub fn check(&self, document: &Document<'_>) -> Result<Vec<ValidationIssue>, ContractError> {
-        let mut context = Context::new();
-        for (prefix, uri) in &self.namespaces {
-            context.set_namespace(prefix, uri);
-        }
-        let factory = Factory::new();
+        let compiled = self.compiled()?;
+        let context = &compiled.context;
         let mut issues = Vec::new();
         let root: Node<'_> = document.root().into();
-        for pattern in &self.patterns {
-            let mut judged: Vec<Node<'_>> = Vec::new();
-            for rule in &pattern.rules {
-                let selector = build(&factory, &selector(&rule.context))?;
+        for (pattern, rules) in self.patterns.iter().zip(&compiled.patterns) {
+            // A node is judged by the first rule of the pattern that selects it.
+            // A node hashes and compares by its address in the document, so
+            // the interior mutability the lint sees never moves a key.
+            #[allow(clippy::mutable_key_type)]
+            let mut judged: HashSet<Node<'_>> = HashSet::new();
+            for (rule, (selector, tests)) in pattern.rules.iter().zip(rules) {
                 let Value::Nodeset(selected) = selector
-                    .evaluate(&context, root)
+                    .evaluate(context, root)
                     .map_err(|error| evaluation(&error))?
                 else {
                     continue;
                 };
                 for node in selected.document_order() {
-                    if judged.contains(&node) {
+                    if !judged.insert(node) {
                         continue;
                     }
-                    judged.push(node);
-                    for assertion in &rule.assertions {
-                        let held = build(&factory, &assertion.test)?
-                            .evaluate(&context, node)
+                    for (assertion, test) in rule.assertions.iter().zip(tests) {
+                        let held = test
+                            .evaluate(context, node)
                             .map_err(|error| evaluation(&error))?
                             .boolean();
                         if held != assertion.is_assert {
-                            issues.push(ValidationIssue {
-                                code: assertion.id.clone().unwrap_or_else(|| {
-                                    if assertion.is_assert {
-                                        "assert"
-                                    } else {
-                                        "report"
-                                    }
-                                    .to_string()
-                                }),
-                                message: assertion.message.clone(),
-                                path: Some(location(node)),
-                            });
+                            issues.push(assertion.issue(node));
                         }
                     }
                 }
             }
         }
         Ok(issues)
+    }
+}
+
+impl Assertion {
+    /// The issue this assertion raises where it fired: coded by its `id`,
+    /// else by what it is.
+    fn issue(&self, node: Node<'_>) -> ValidationIssue {
+        let code = match &self.id {
+            Some(id) => id.clone().into(),
+            None if self.is_assert => "assert".into(),
+            None => "report".into(),
+        };
+        ValidationIssue {
+            code,
+            message: self.message.clone(),
+            path: Some(location(node)),
+        }
     }
 }
 
@@ -335,6 +413,37 @@ mod tests {
             .map(|i| (i.message.as_str(), i.path.as_deref().unwrap_or("")))
             .collect();
         assert_eq!(fired, [("first", "/r/item[1]"), ("second", "/r/item[2]")]);
+    }
+
+    #[test]
+    fn rules_compile_once_a_thread_however_many_documents_and_nodes() {
+        let text = r#"<schema xmlns="http://purl.oclc.org/dsdl/schematron">
+  <pattern><rule context="item"><assert test="@id">an id</assert></rule></pattern>
+</schema>"#;
+        let rules = Rules::parse(text).expect("parses");
+        let items = "<item id='1'/>".repeat(200);
+        let package = sxd_document::parser::parse(&format!("<r>{items}</r>")).expect("xml");
+        let document = package.as_document();
+        let compiled = || COMPILED.with_borrow(|all| all.contains_key(&rules.key));
+        assert!(!compiled());
+        let before = COMPILATIONS.get();
+        let started = std::time::Instant::now();
+        for _ in 0..100 {
+            assert!(rules.check(&document).expect("checks").is_empty());
+        }
+        // Once for 100 documents of 200 nodes each.
+        assert!(compiled());
+        assert_eq!(COMPILATIONS.get() - before, 1);
+        let each = started.elapsed() / 100;
+        assert!(
+            each < std::time::Duration::from_millis(5),
+            "{each:?} a document"
+        );
+        let key = rules.key;
+        drop(rules);
+        let other = Rules::parse(text).expect("parses");
+        other.check(&document).expect("checks");
+        assert!(!COMPILED.with_borrow(|all| all.contains_key(&key)), "swept");
     }
 
     #[test]
