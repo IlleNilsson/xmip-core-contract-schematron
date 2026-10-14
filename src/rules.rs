@@ -429,7 +429,10 @@ mod tests {
         let before = COMPILATIONS.get();
         let started = std::time::Instant::now();
         for _ in 0..100 {
-            assert!(rules.check(&document).expect("checks").is_empty());
+            assert_eq!(
+                rules.check(&document).expect("checks"),
+                [] as [ValidationIssue; 0]
+            );
         }
         // Once for 100 documents of 200 nodes each.
         assert!(compiled());
