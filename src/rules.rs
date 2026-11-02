@@ -427,21 +427,16 @@ mod tests {
         let compiled = || COMPILED.with_borrow(|all| all.contains_key(&rules.key));
         assert!(!compiled());
         let before = COMPILATIONS.get();
-        let started = std::time::Instant::now();
         for _ in 0..100 {
             assert_eq!(
                 rules.check(&document).expect("checks"),
                 [] as [ValidationIssue; 0]
             );
         }
-        // Once for 100 documents of 200 nodes each.
+        // Once for 100 documents of 200 nodes each; what a document then
+        // costs is the timing program's (tests/measured).
         assert!(compiled());
         assert_eq!(COMPILATIONS.get() - before, 1);
-        let each = started.elapsed() / 100;
-        assert!(
-            each < std::time::Duration::from_millis(5),
-            "{each:?} a document"
-        );
         let key = rules.key;
         drop(rules);
         let other = Rules::parse(text).expect("parses");
