@@ -9,7 +9,7 @@ Location that refers to this contract with a Schematron document bound has
 every Stream held to its rules, and each assertion that fires is reported with
 the words its author wrote and the XPath of where it fired.
 
-The claims are this crate's when it is called, and the Playground calls it.
+The claims are this crate's when it is called, and the Essentials calls it.
 A node holding a Location's Streams to it is
 [decided, not built](../../../../../doc/architecture/estate-map.md#arrival-validation): a node refuses to start a
 Location that names a contract until it does.
