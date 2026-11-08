@@ -91,7 +91,7 @@ impl Contract for Schematron {
             return Ok(true);
         }
         let first = stream
-            .bytes()
+            .load()?
             .iter()
             .copied()
             .find(|byte| !byte.is_ascii_whitespace());
@@ -99,7 +99,7 @@ impl Contract for Schematron {
     }
 
     fn validate(&self, stream: &Stream) -> Result<ValidationResult, ContractError> {
-        let text = match stream.text() {
+        let text = match contract::text(stream)? {
             Ok(text) => text,
             Err(error) => return Ok(malformed(&format!("not UTF-8 text: {error}"))),
         };
