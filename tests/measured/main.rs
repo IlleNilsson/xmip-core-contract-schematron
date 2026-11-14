@@ -10,6 +10,7 @@
 
 use contract::ValidationIssue;
 use xmip_core_contract_schematron::rules::Rules;
+use xpath::Document;
 
 #[test]
 fn a_document_of_two_hundred_nodes_is_checked_in_under_five_milliseconds() {
@@ -18,8 +19,7 @@ fn a_document_of_two_hundred_nodes_is_checked_in_under_five_milliseconds() {
 </schema>"#;
     let rules = Rules::parse(text).expect("parses");
     let items = "<item id='1'/>".repeat(200);
-    let package = sxd_document::parser::parse(&format!("<r>{items}</r>")).expect("xml");
-    let document = package.as_document();
+    let document = Document::parse(&format!("<r>{items}</r>")).expect("xml");
     let started = std::time::Instant::now();
     for _ in 0..100 {
         assert_eq!(
