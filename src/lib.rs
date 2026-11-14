@@ -22,6 +22,7 @@ use contract::{
 use rules::Rules;
 use stream::Stream;
 use xcore::settings::{Applies, Kind, Presence, Setting, Settings};
+use xpath::Document;
 
 /// The Schematron contract, bare or bound to rules.
 pub struct Schematron {
@@ -103,15 +104,19 @@ impl Contract for Schematron {
             Ok(text) => text,
             Err(error) => return Ok(malformed(&format!("not UTF-8 text: {error}"))),
         };
-        let package = match sxd_document::parser::parse(text) {
-            Ok(package) => package,
-            Err(error) => return Ok(malformed(&format!("not well-formed XML: {error}"))),
+        // Bare, well-formedness is the estate's one reader's to say; bound,
+        // the document is read once into what the rules' XPath evaluates.
+        let Some(rules) = &self.rules else {
+            return Ok(match codec::xml::tree::Document::parse(text) {
+                Ok(_) => ValidationResult::of(Vec::new()),
+                Err(refused) => malformed(&format!("not well-formed XML: {refused}")),
+            });
         };
-        let issues = match &self.rules {
-            Some(rules) => rules.check(&package.as_document())?,
-            None => Vec::new(),
+        let document = match Document::parse(text) {
+            Ok(document) => document,
+            Err(error) => return Ok(malformed(&error.message)),
         };
-        Ok(ValidationResult::of(issues))
+        Ok(ValidationResult::of(rules.check(&document)?))
     }
 }
 

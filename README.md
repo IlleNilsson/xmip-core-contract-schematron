@@ -17,10 +17,14 @@ Location that names a contract until it does.
 Schematron is how the XML business world states rules over and above structure:
 Peppol BIS and UBL e-invoicing, ISO 20022 payments, HL7 CDA. `src/rules.rs`
 lists the ISO Schematron subset read; a document outside it is refused when
-bound, by name. XPath is 1.0. Every expression compiles when the document is
-bound, so a bad one refuses it there, and once more on each thread on its first
-check, because a compiled XPath cannot move between threads; every later
-check on that thread reuses them.
+bound, by name. The Schematron document is read by the estate's one XML
+reader (`xmip-core-library-codec`), and so is a document the bare contract
+holds to well-formedness. XPath is 1.0, the estate's one XPath, the `xpath`
+path technology (`xmip-core-path-xpath`): every expression compiles when the
+document is bound, so a bad one, or one using a prefix no `ns` binds, refuses
+it there, and is built once more on each thread on its first check, because a
+compiled XPath cannot move between threads; every later check on that thread
+reuses it.
 
 ## Toolchain
 

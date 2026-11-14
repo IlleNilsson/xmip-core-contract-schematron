@@ -22,14 +22,14 @@ contract = { package = "xmip-core-contract", git = "https://github.com/IlleNilss
 xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
 stream = { package = "xmip-core-stream", git = "https://github.com/IlleNilsson/xmip-core-stream", branch = "main" }
 
-# The schema document is read with the same parser the xml-schema technology
-# uses; the instance is read into the DOM the XPath engine evaluates over.
-roxmltree = "0.21"
-sxd-document = "0.3"
-# XPath 1.0. Schematron is XPath with a rule structure around it; the engine is
-# the whole point, and this one is pure Rust and complete for the 1.0 axes,
-# predicates and function library.
-sxd-xpath = "0.4"
+# The estate's one XML reader: the Schematron document is read with codec's
+# tree, and so is a document a bare contract holds to well-formedness.
+codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
+# XPath 1.0. Schematron is XPath with a rule structure around it, and the
+# estate evaluates XPath in one place, the xpath path technology: a document
+# read once, each expression compiled where the rules are bound and built
+# once a thread, a fired node's location.
+xpath = { package = "xmip-core-path-xpath", git = "https://github.com/IlleNilsson/xmip-core-path-xpath", branch = "main" }
 
 # The module's timing program (doc/governance/rust-style.md section 5c): a
 # plain cargo test leaves it out, and the landing runs it after every other
