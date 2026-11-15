@@ -42,6 +42,9 @@ test = false
 [dev-dependencies]
 # The parent's Stream fixture, for the tests only (ADR-0044).
 contract = { package = "xmip-core-contract", git = "https://github.com/IlleNilsson/xmip-core-contract", branch = "main", features = ["test-support"] }
+# The timing program's figure, the fastest of five over its rounds, read
+# once for the estate (`xcore::latency`); for the tests only.
+xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main", features = ["test-support"] }
 
 [lints.rust]
 unsafe_code = "forbid"
