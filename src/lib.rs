@@ -246,8 +246,7 @@ mod tests {
             factory.load("").expect("bare").descriptor().id.0,
             "schematron"
         );
-        let dir = std::env::temp_dir().join("xmip-schematron-test");
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = file::temporary::Folder::new("schematron");
         let file = dir.join("invoice.sch");
         std::fs::write(&file, INVOICE).expect("write rules");
         let bound = factory
