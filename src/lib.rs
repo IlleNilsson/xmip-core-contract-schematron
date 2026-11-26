@@ -12,24 +12,41 @@
 //! A rule is an `XPath` context and a set of assertions, and a failed assertion
 //! carries the human sentence its author wrote — which is what an operator sees.
 //! [`rules`] documents the subset of ISO Schematron read.
+//!
+//! **Built with its `declaration` feature alone** the crate is
+//! [`declaration`], what a Location naming it is configured with and the
+//! name a Validate step names it by, and none of the code above, which is
+//! behind the default feature: what the surfaces' library carries (ADR-0064,
+//! amendment 2026-11-26).
 
+#[cfg(feature = "declaration")]
+pub mod declaration;
+
+#[cfg(feature = "default")]
 pub mod rules;
 
+#[cfg(feature = "default")]
 use contract::{
     Contract, ContractDescriptor, ContractError, ContractFactory, ContractId, ValidationIssue,
     ValidationResult,
 };
+#[cfg(feature = "default")]
 use rules::Rules;
+#[cfg(feature = "default")]
 use stream::Stream;
-use xcore::settings::{Applies, Kind, Presence, Setting, Settings};
+#[cfg(feature = "default")]
+use xcore::settings::Settings;
+#[cfg(feature = "default")]
 use xpath::Document;
 
 /// The Schematron contract, bare or bound to rules.
+#[cfg(feature = "default")]
 pub struct Schematron {
     descriptor: ContractDescriptor,
     rules: Option<Rules>,
 }
 
+#[cfg(feature = "default")]
 impl Schematron {
     /// Well-formedness only.
     #[must_use]
@@ -61,12 +78,14 @@ impl Schematron {
     }
 }
 
+#[cfg(feature = "default")]
 impl Default for Schematron {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "default")]
 fn descriptor(id: &str) -> ContractDescriptor {
     ContractDescriptor {
         id: ContractId(id.to_string()),
@@ -75,6 +94,7 @@ fn descriptor(id: &str) -> ContractDescriptor {
     }
 }
 
+#[cfg(feature = "default")]
 impl Contract for Schematron {
     fn descriptor(&self) -> &ContractDescriptor {
         &self.descriptor
@@ -120,21 +140,24 @@ impl Contract for Schematron {
     }
 }
 
+#[cfg(feature = "default")]
 fn malformed(message: &str) -> ValidationResult {
     ValidationResult::of(vec![ValidationIssue::malformed(message)])
 }
 
 /// Loads the contract a Location names: an empty reference is the bare
 /// contract, anything else is the path of a Schematron file.
+#[cfg(feature = "default")]
 pub struct SchematronFactory;
 
+#[cfg(feature = "default")]
 impl ContractFactory for SchematronFactory {
     fn technology(&self) -> &'static str {
-        "schematron"
+        declaration::NAME
     }
 
     fn settings(&self) -> &'static Settings {
-        SETTINGS
+        declaration::SETTINGS
     }
 
     fn load(&self, reference: &str) -> Result<Box<dyn Contract>, ContractError> {
@@ -147,18 +170,6 @@ impl ContractFactory for SchematronFactory {
         Ok(Box::new(Schematron::with_rules(&text)?))
     }
 }
-
-/// What a Location gives this contract (ADR-0064, amendment 2026-09-26).
-const SETTINGS: &Settings = &Settings {
-    technology: env!("CARGO_PKG_NAME"),
-    settings: &[Setting {
-        name: "reference",
-        kind: Kind::Address,
-        presence: Presence::Optional,
-        meaning: "The path of the Schematron rules documents are held to.",
-        applies: Applies::Both,
-    }],
-};
 
 #[cfg(test)]
 mod tests {
@@ -262,6 +273,8 @@ mod tests {
 
     #[test]
     fn schematron_declares_its_settings_and_reads_through_them() {
+        use declaration::SETTINGS;
+        use xcore::settings::Applies;
         assert!(SETTINGS.problems().is_empty(), "{:?}", SETTINGS.problems());
         let given = |name: &str, value: &str| {
             (
